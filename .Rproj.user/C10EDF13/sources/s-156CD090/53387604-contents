@@ -1,0 +1,24 @@
+---
+title: "Social Lisntenig de #VamosASalirAdelante"
+output: 
+  html_document: 
+    css: style.css
+lang: es-CO
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source("code.R")
+Sys.setlocale(locale = "es_ES.UTF-8")
+```
+
+<h1>¿Los casi 18 mil tweets son creaciones propias o solo difusión?</h1>
+```{r, include=T, echo = F}
+g1
+```
+<br>
+<br>
+<h1>¿De dónde salen los contenidos?</h1>
+```{r, include=T, echo = F}
+g2
+```
