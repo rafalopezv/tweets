@@ -11,12 +11,6 @@ library(highcharter)
 library(graphTweets)
 library(sigmajs)
 
-# conectar con API
-# token <- create_token(
-#   app = "elecciones_bolivia_2019",
-#   consumer_key = "GNmZjOP7FYY2iRcBue6zGVdJE ",
-#   consumer_secret = "N4sJYQotWRiA0BYerKyl4cxfrCONQVkLxBkEYT2iXiaAOuL0uZ"
-#   )
 
 
 #tw <- search_tweets("#VamosASalirAdelante", n = 18000)
