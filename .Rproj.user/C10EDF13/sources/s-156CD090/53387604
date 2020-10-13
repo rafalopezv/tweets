@@ -5,16 +5,16 @@
     "dirty" : false,
     "encoding" : "UTF-8",
     "folds" : "",
-    "hash" : "2950709312",
+    "hash" : "0",
     "id" : "53387604",
-    "lastKnownWriteTime" : 1602447129,
-    "last_content_update" : 1602447129513,
+    "lastKnownWriteTime" : 1602612895,
+    "last_content_update" : 1602612895676,
     "path" : "~/Documents/R/tweets/index.Rmd",
     "project_path" : "index.Rmd",
     "properties" : {
-        "cursorPosition" : "20,34",
+        "cursorPosition" : "12,0",
         "last_setup_crc32" : "156CD0906d1b319c",
-        "scrollLine" : "13"
+        "scrollLine" : "0"
     },
     "read_only" : false,
     "read_only_alternatives" : [

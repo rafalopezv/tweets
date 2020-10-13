@@ -1,0 +1,807 @@
+# sobre: análisis voto uninomninales
+library(tidyverse)
+library(magrittr)
+library(htmltools)
+library(leaflet)
+library(janitor)
+library(highcharter)
+library(hrbrthemes)
+
+bases <- list.files(recursive = T)
+bases <- bases[grepl("bases_procesadas/agregado_departamental_voto/", bases)]
+df <- map(bases, read_csv)
+
+df %<>% 
+  map_dfr(., extract, c("emitidos", "nulos", "blancos", "voto", "año")) %>% 
+  filter(año > 1996) %>% 
+  filter(voto %in% c("eleccion_presidente", "uninominales")) %>% 
+  group_by(año, voto) %>% 
+  summarise(
+    blancos = sum(blancos), 
+    nulos = sum(nulos), 
+    emitidos = sum(emitidos)
+  ) %>% 
+  mutate(
+    total = blancos + nulos,
+    blancos = blancos/emitidos * 100,
+    nulos = nulos/emitidos * 100,
+    total = total/emitidos * 100,
+    total_1 = if_else(voto == "uninominales", -total, total)
+  ) %>% 
+  mutate_if(is.numeric, round, 0) 
+
+# blancos + nulos a nivel nacional
+df %>% 
+  ggplot(aes(x = as.factor(año), y = total_1, group = voto, fill = voto)) +
+  geom_bar(stat = "identity", width = 0.75) +
+  coord_flip() +
+  scale_y_continuous(breaks = seq(-30, 30, 5), 
+                     labels = abs(seq(-30, 30, 5))) +
+  geom_text(aes(label = paste0(abs(total_1), " %")), size = 5) +
+  theme_ipsum_rc() + 
+  theme(
+    legend.position = "bottom"
+  ) + 
+  labs(
+    title = "Porcentaje de votos nulos y blancos en Elecciones Generales",
+    x = "año",
+    y = "porcentaje votos blancos + nulos",
+    caption = "datosCC",
+    fill = ""
+  ) + 
+  scale_fill_viridis_d(alpha = 0.7, direction = -1, 
+                       option = "E", 
+                       guide = guide_legend(reverse = TRUE)) +
+  ggsave("uninominales/img/nulos_blancos_nacional.jpg", width = 10, height = 8)
+
+
+# solo blancos 
+df %>% 
+  mutate(total_1 = if_else(voto == "uninominales", -blancos, blancos)) %>% 
+  ggplot(aes(x = as.factor(año), y = total_1, group = voto, fill = voto)) +
+  geom_bar(stat = "identity", width = 0.75) +
+  coord_flip() +
+  scale_y_continuous(breaks = seq(-30, 30, 5), 
+                     labels = abs(seq(-30, 30, 5))) +
+  geom_text(aes(label = paste0(abs(total_1), " %")), size = 5) +
+  theme_ipsum_rc() + 
+  theme(
+    legend.position = "bottom"
+  ) + 
+  labs(
+    title = "Porcentaje de votos blancos en Elecciones Generales",
+    x = "año",
+    y = "porcentaje votos blancos",
+    caption = "datosCC",
+    fill = ""
+  ) + 
+  scale_fill_viridis_d(alpha = 0.7, direction = -1, 
+                       option = "E", 
+                       guide = guide_legend(reverse = TRUE)) +
+  ggsave("uninominales/img/blancos_nacional.jpg", width = 10, height = 8)
+
+# solo nulos
+df %>% 
+  mutate(total_1 = if_else(voto == "uninominales", -nulos, nulos)) %>% 
+  ggplot(aes(x = as.factor(año), y = total_1, group = voto, fill = voto)) +
+  geom_bar(stat = "identity", width = 0.75) +
+  coord_flip() +
+  scale_y_continuous(breaks = seq(-30, 30, 5), 
+                     labels = abs(seq(-30, 30, 5))) +
+  geom_text(aes(label = paste0(abs(total_1), " %")), size = 5) +
+  theme_ipsum_rc() + 
+  theme(
+    legend.position = "bottom"
+  ) + 
+  labs(
+    title = "Porcentaje de votos nulos en Elecciones Generales",
+    x = "año",
+    y = "porcentaje votos nulos",
+    caption = "datosCC",
+    fill = ""
+  ) + 
+  scale_fill_viridis_d(alpha = 0.7, direction = -1, 
+                       option = "E", 
+                       guide = guide_legend(reverse = TRUE)) +
+  ggsave("uninominales/img/nulos_nacional.jpg", width = 10, height = 8)
+
+# diferencias a nivel de cada circunscripcion
+aa <- rio::import("uninominales/input/Computo Nacional Final 2014.xlsx") %>% 
+  select(-Circun) 
+
+bb <- rio::import("uninominales/input/Computo Nacional Final 2014.xlsx", which = 2) %>% 
+  select(NomDep, NomProv, NomReci, CodigoMesa, Circun) 
+
+aa %<>% left_join(., bb, by = c("NomDep", "NomProv", "NomReci", "CodigoMesa"))
+
+aa %<>% 
+  mutate(
+    validos = PDC +  `PVB-IEP` +  MSM + `MAS-IPSP` +  UD,
+    emitidos = validos + Blancos + Nulos,
+    voto = "presidente",
+  ) 
+
+bb <- rio::import("uninominales/input/Computo Nacional Final 2014.xlsx", which = 2) %>% 
+  mutate(
+    validos = PDC +  `PVB-IEP` +  MSM + `MAS-IPSP` +  UD,
+    emitidos = validos + Blancos + Nulos,
+    voto = "uninominales"
+  ) 
+
+aa %<>% 
+  group_by(Circun) %>% 
+  summarise(
+    Blancos = sum(Blancos),
+    Nulos = sum(Nulos),
+    emitidos = sum(emitidos),
+    Blancos = Blancos/emitidos* 100,
+    Nulos = Nulos/emitidos* 100
+  ) %>% 
+  mutate(
+    total = Blancos + Nulos,
+    voto = "presidente"
+  ) %>% 
+  select(-emitidos)
+
+bb %<>% 
+  group_by(Circun) %>% 
+  summarise(
+    Blancos = sum(Blancos),
+    Nulos = sum(Nulos),
+    emitidos = sum(emitidos),
+    Blancos = Blancos/emitidos* 100,
+    Nulos = Nulos/emitidos* 100
+  ) %>% 
+  mutate(
+    total = Blancos + Nulos,
+    voto = "uninominales"
+  ) %>% 
+  select(-emitidos)
+
+df <- bind_rows(aa, bb) %>% 
+  mutate(
+    total_1 = if_else(voto == "uninominales", -total, total)
+  ) %>% 
+  mutate_if(is.numeric, round, 0) 
+df$Circun %<>% as.factor()
+
+## find the order
+temp_df <-
+  df %>% 
+  filter(voto == "uninominales") %>% 
+  arrange(desc(total_1))
+the_order <- temp_df$Circun
+
+# grafico de uninominales blanco + nulo por circunscripcion
+df %>% 
+  ggplot(aes(x = Circun, y = total_1, num, group = voto, fill = voto)) +
+  geom_bar(stat = "identity", width = 0.75) +
+  coord_flip() +
+  scale_x_discrete(limits = the_order) +
+  scale_y_continuous(breaks = seq(-60, 60, 5), 
+                     labels = abs(seq(-60, 60, 5))) +
+  geom_text(aes(label = paste0(abs(total_1), " %")), size = 4) +
+  theme_ipsum_rc() + 
+  theme(
+    legend.position = "bottom"
+  ) + 
+  labs(
+    title = "Porcentaje de votos nulos y blancos, Elección General 2014",
+    subtitle = "Por circunscripción",
+    x = "circunscripción",
+    y = "porcentaje votos blancos + nulos",
+    caption = "datosCC",
+    fill = ""
+  ) + 
+  scale_fill_viridis_d(alpha = 0.7, direction = -1, 
+                       option = "E", 
+                       guide = guide_legend(reverse = TRUE)) +
+  ggsave("uninominales/img/nulos_blancos_circun.jpg", width = 20, height = 12)
+
+# grafico de uninominales nulo por circunscripcion
+df %<>% 
+  mutate(
+    total_1 = if_else(voto == "uninominales", -Nulos, Nulos)
+  ) %>% 
+  mutate_if(is.numeric, round, 0) 
+df$Circun %<>% as.factor()
+
+## find the order
+temp_df <-
+  df %>% 
+  filter(voto == "uninominales") %>% 
+  arrange(desc(total_1))
+the_order <- temp_df$Circun
+
+# grafico de uninominales blanco + nulo por circunscripcion
+df %>% 
+  ggplot(aes(x = Circun, y = total_1, num, group = voto, fill = voto)) +
+  geom_bar(stat = "identity", width = 0.75) +
+  coord_flip() +
+  scale_x_discrete(limits = the_order) +
+  scale_y_continuous(breaks = seq(-60, 60, 5), 
+                     labels = abs(seq(-60, 60, 5))) +
+  geom_text(aes(label = paste0(abs(total_1), " %")), size = 4) +
+  theme_ipsum_rc() + 
+  theme(
+    legend.position = "bottom"
+  ) + 
+  labs(
+    title = "Porcentaje de votos nulos, Elección General 2014",
+    subtitle = "Por circunscripción",
+    x = "circunscripción",
+    y = "porcentaje votos nulos",
+    caption = "datosCC",
+    fill = ""
+  ) + 
+  scale_fill_viridis_d(alpha = 0.7, direction = -1, 
+                       option = "E", 
+                       guide = guide_legend(reverse = TRUE)) +
+  ggsave("uninominales/img/nulos_circun.jpg", width = 20, height = 12)
+
+# blancos por circunscripcion
+df %<>% 
+  mutate(
+    total_1 = if_else(voto == "uninominales", -Blancos, Blancos)
+  ) %>% 
+  mutate_if(is.numeric, round, 0) 
+df$Circun %<>% as.factor()
+
+## find the order
+temp_df <-
+  df %>% 
+  filter(voto == "uninominales") %>% 
+  arrange(desc(total_1))
+the_order <- temp_df$Circun
+
+# grafico de uninominales blanco + nulo por circunscripcion
+df %>% 
+  ggplot(aes(x = Circun, y = total_1, num, group = voto, fill = voto)) +
+  geom_bar(stat = "identity", width = 0.75) +
+  coord_flip() +
+  scale_x_discrete(limits = the_order) +
+  scale_y_continuous(breaks = seq(-60, 60, 5), 
+                     labels = abs(seq(-60, 60, 5))) +
+  geom_text(aes(label = paste0(abs(total_1), " %")), size = 3.6) +
+  theme_ipsum_rc() + 
+  theme(
+    legend.position = "bottom"
+  ) + 
+  labs(
+    title = "Porcentaje de votos blancos, Elección General 2014",
+    subtitle = "Por circunscripción",
+    x = "circunscripción",
+    y = "porcentaje votos blancos",
+    caption = "datosCC",
+    fill = ""
+  ) + 
+  scale_fill_viridis_d(alpha = 0.7, direction = -1, 
+                       option = "E", 
+                       guide = guide_legend(reverse = TRUE)) +
+  ggsave("uninominales/img/blancos_circun.jpg", width = 20, height = 12)
+
+# mapas
+mapa <- jsonlite::fromJSON("geo_mapas/unis_2014.geojson", simplifyVector = F)
+
+blancos_mapa <- df %>% 
+  rename(
+    codigo_cir = Circun,
+    value = Blancos
+  ) %>% 
+  filter(voto == "uninominales")
+
+bb <- rio::import("uninominales/input/Computo Nacional Final 2014.xlsx", which = 2) %>% 
+  select(NomDep, codigo_cir = Circun) %>% 
+  unique() %>% 
+  mutate_if(is.character, toupper) %>% 
+  mutate(codigo_cir = as.factor(codigo_cir))
+
+blancos_mapa  %<>% left_join(., bb) 
+
+
+highchart(type = "map") %>%
+  hc_add_series(mapData = mapa, showInLegend = F, data = blancos_mapa,
+                value = "value", joinBy = "codigo_cir",
+                borderColor = "transparent") %>%
+  hc_colorAxis(stops = color_stops(colors = viridisLite::cividis(5, direction = -1))) %>%
+  hc_title(text = "Votos blancos por circunscripción",
+           align = "left",
+           style = list(useHTML = TRUE, fontSize = "18")) %>%
+  hc_subtitle(text = "Elección 2014",
+              align =  "left") %>% 
+  hc_legend(layout = "horizontal", align = "right",
+            floating = T) %>% 
+  hc_tooltip(enabled = T, valueDecimals = 0, borderWidth = 0.01,
+             pointFormat = paste("<br>Circunscripción: <b>{point.codigo_cir}</b><br>
+                                  <br>Porcentaje votos blancos: <b>{point.value} %</b><br>
+                                  <br>Departamento: <b>{point.NomDep}</b><br>"),
+             headerFormat = "") %>% 
+  hc_chart(backgroundColor="#FFFFFF", style=list(fontFamily = "Roboto",
+                                                 color = "#383733"), 
+           zoomType = "xy") %>%
+  htmlwidgets::saveWidget(here::here("uninominales", "img", "blancos_mapa.html"))
+
+# jitter de los dos dos tipos de votos por mesa
+aa <- rio::import("uninominales/input/Computo Nacional Final 2014.xlsx") %>% 
+  select(-Circun) 
+
+bb <- rio::import("uninominales/input/Computo Nacional Final 2014.xlsx", which = 2) %>% 
+  select(NomDep, NomProv, NomReci, CodigoMesa, Circun) 
+
+aa %<>% left_join(., bb, by = c("NomDep", "NomProv", "NomReci", "CodigoMesa"))
+
+aa %<>% 
+  mutate(
+    validos = PDC +  `PVB-IEP` +  MSM + `MAS-IPSP` +  UD,
+    emitidos = validos + Blancos + Nulos,
+    voto = "presidente",
+  ) 
+
+bb <- rio::import("uninominales/input/Computo Nacional Final 2014.xlsx", which = 2) %>% 
+  mutate(
+    validos = PDC +  `PVB-IEP` +  MSM + `MAS-IPSP` +  UD,
+    emitidos = validos + Blancos + Nulos,
+    voto = "uninominales"
+  )
+
+aa %<>% 
+  select(NomDep, Blancos, validos, voto, CodigoMesa, Circun, emitidos) %>% 
+  mutate(blancos = Blancos/emitidos * 100) %>% 
+  filter(emitidos != 0) %>% 
+  filter(blancos <= 100) 
+
+
+bb %<>% 
+  select(NomDep, Blancos, validos, voto, CodigoMesa, Circun, emitidos) %>% 
+  mutate(blancos = Blancos/emitidos * 100) %>% 
+  filter(emitidos != 0) %>% 
+  filter(blancos <= 100) 
+
+mesas <- bb %>% pull(CodigoMesa) %>% unique 
+aa %<>% 
+  filter(CodigoMesa %in% mesas)
+
+mesas <- aa %>% pull(CodigoMesa) %>% unique 
+bb %<>% 
+  filter(CodigoMesa %in% mesas)
+
+temp <- bind_rows(aa, bb)
+
+# jitter a nivel departamental
+temp %>% 
+  ggplot(aes(Blancos, NomDep)) + 
+  geom_jitter(width = 0.7, height = 0.4, alpha = 0.2, size = 0.7, 
+              aes(colour = voto)) + 
+  theme_ipsum_rc() + 
+  scale_x_continuous(
+    breaks = seq(0, 100, 10),
+    limits = c(0, 100)
+  ) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_blank()
+  ) + 
+  labs(
+    title = "Porcentaje de votos blancos por mesa y departamento",
+    subtitle = "26602 mesas. Elección 2014",
+    y = "", 
+    x = "%",
+    caption = "cada punto es una mesa\ndatosCC"
+  ) +
+  ggsave("uninominales/img/blancos_mesa.jpg", width = 25, height = 12)
+  
+# jitter a nivel de circunscripcion
+temp %>% 
+  ggplot(aes(Blancos, Circun)) + 
+  geom_jitter(width = 0.7, height = 0.4, alpha = 0.2, size = 0.7, 
+              aes(colour = voto)) + 
+  theme_ipsum_rc() + 
+  scale_x_continuous(
+    breaks = seq(0, 100, 10),
+    limits = c(0, 100)
+  ) +
+  scale_y_continuous(
+    breaks = seq(1, 63, 1)
+  ) +
+  coord_flip() +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_blank()
+  ) + 
+  labs(
+    title = "Porcentaje de votos blancos por mesa y circunscripción",
+    subtitle = "26602 mesas. Elección 2014",
+    y = "circunscripción", 
+    x = "%",
+    caption = "cada punto es una mesa\ndatosCC"
+  ) +
+  ggsave("uninominales/img/blancos_circunscripcion.jpg", width = 25, height = 12)
+
+##############################
+# mapas de circusncripciones
+##############################
+mapa <- geojsonio::geojson_read("geo_mapas/unis_2014.geojson",
+                                      what = "sp")
+
+pf <- "https://api.mapbox.com/styles/v1/rafalopezv/cjp95b3sz8bnk2rmj3ymjfbrv/tiles/{z}/{x}/{y}?access_token=pk.eyJ1IjoicmFmYWxvcGV6diIsImEiOiJjanA4eTg5YmowMmd3M3FwbG11dWt2cThlIn0.2ul3PbBTgOeY9LylZcFEeg"
+
+# la paz
+leaflet(mapa) %>%
+  addTiles(urlTemplate = pf) %>%
+  addPolygons(stroke = T, smoothFactor = 0.5, fillOpacity = 0, 
+              weight = 2, color = "#ADD8E6", fill = "white", 
+              label  = ~htmlEscape(paste("Cirunscripción: ", codigo_cir))) %>% 
+  setView(-68.0412484, -16.4994513, zoom = 12) %>% 
+  htmlwidgets::saveWidget(here::here("uninominales", "img", "circ_lpz.html"))
+
+# el alto     
+leaflet(mapa) %>%
+  addTiles(urlTemplate = pf) %>%
+  addPolygons(stroke = T, smoothFactor = 0.5, fillOpacity = 0, 
+              weight = 2, color = "#ADD8E6", fill = "white", 
+              label  = ~htmlEscape(paste("Cirunscripción: ", codigo_cir))) %>% 
+  setView(-68.2729875, -16.5274845, zoom = 12) %>% 
+  htmlwidgets::saveWidget(here::here("uninominales", "img", "circ_el_alto.html"))
+
+# santa cruz 
+leaflet(mapa) %>%
+  addTiles(urlTemplate = pf) %>%
+  addPolygons(stroke = T, smoothFactor = 0.5, fillOpacity = 0, 
+              weight = 2, color = "#ADD8E6", fill = "white", 
+              label  = ~htmlEscape(paste("Cirunscripción: ", codigo_cir))) %>% 
+  setView(-63.1627941, -17.7947557, zoom = 12) %>% 
+  htmlwidgets::saveWidget(here::here("uninominales", "img", "circ_scz.html"))
+
+# cochabamba 
+leaflet(mapa) %>%
+  addTiles(urlTemplate = pf) %>%
+  addPolygons(stroke = T, smoothFactor = 0.5, fillOpacity = 0, 
+              weight = 2, color = "#ADD8E6", fill = "white", 
+              label  = ~htmlEscape(paste("Cirunscripción: ", codigo_cir))) %>% 
+  setView(-66.1449953, -17.4051857, zoom = 12) %>% 
+  htmlwidgets::saveWidget(here::here("uninominales", "img", "circ_cbba.html"))
+
+# Oruro 
+leaflet(mapa) %>%
+  addTiles(urlTemplate = pf) %>%
+  addPolygons(stroke = T, smoothFactor = 0.5, fillOpacity = 0, 
+              weight = 2, color = "#ADD8E6", fill = "white", 
+              label  = ~htmlEscape(paste("Cirunscripción: ", codigo_cir))) %>% 
+  setView(-67.0876271, -17.9650053, zoom = 12) %>% 
+  htmlwidgets::saveWidget(here::here("uninominales", "img", "circ_oruro.html"))
+
+# Potosi 
+leaflet(mapa) %>%
+  addTiles(urlTemplate = pf) %>%
+  addPolygons(stroke = T, smoothFactor = 0.5, fillOpacity = 0, 
+              weight = 2, color = "#ADD8E6", fill = "white", 
+              label  = ~htmlEscape(paste("Cirunscripción: ", codigo_cir))) %>% 
+  setView(-65.7498591, -19.5701636, zoom = 12) %>% 
+  htmlwidgets::saveWidget(here::here("uninominales", "img", "circ_ptsi.html"))
+
+# Sucre 
+leaflet(mapa) %>%
+  addTiles(urlTemplate = pf) %>%
+  addPolygons(stroke = T, smoothFactor = 0.5, fillOpacity = 0, 
+              weight = 2, color = "#ADD8E6", fill = "white", 
+              label  = ~htmlEscape(paste("Cirunscripción: ", codigo_cir))) %>% 
+  setView(-65.2572179, -19.0399583, zoom = 12) %>% 
+  htmlwidgets::saveWidget(here::here("uninominales", "img", "circ_sucre.html"))
+
+# Tarija 
+leaflet(mapa) %>%
+  addTiles(urlTemplate = pf) %>%
+  addPolygons(stroke = T, smoothFactor = 0.5, fillOpacity = 0, 
+              weight = 2, color = "#ADD8E6", fill = "white", 
+              label  = ~htmlEscape(paste("Cirunscripción: ", codigo_cir))) %>% 
+  setView(-64.732782, -21.5299266, zoom = 12) %>% 
+  htmlwidgets::saveWidget(here::here("uninominales", "img", "circ_tja.html"))
+
+
+# peso de los municipios en las circunscripciones
+peso <- aa %>% 
+  group_by(Circun, municipio, codigo) %>% 
+  summarise(
+    inscritos = sum(InscritosHabilitados),
+    emitidos  = sum(Validos)
+  ) %>% 
+  ungroup() %>% 
+  group_by(Circun) %>% 
+  mutate(
+    prop_inscritos = prop.table(inscritos) * 100,
+    prop_emitidos = prop.table(emitidos) * 100
+  ) %>% 
+  filter(prop_inscritos != 100) %>% 
+  rename(value = prop_inscritos)
+  
+
+ine <- rio::import("datos_extras/datos_municipales/input/codigos.ine.xlsx") %>% 
+  mutate(
+    CODIGODEPARTAMENTO  = as.numeric(CODIGODEPARTAMENTO),
+    CODIGOPROVINCIA  = as.numeric(CODIGOPROVINCIA),
+    CODIGOMUNICIPIO  = as.numeric(CODIGOMUNICIPIO),
+    codigo = paste0(CODIGODEPARTAMENTO, CODIGOPROVINCIA, CODIGOMUNICIPIO) 
+  ) %>% 
+  select(CODIGO, codigo)
+
+peso %<>% left_join(., ine)
+  
+#  mapa de pesos
+mapa_unis <- jsonlite::fromJSON("geo_mapas/unis_2014.geojson", simplifyVector = F)
+mapa <- jsonlite::fromJSON("geo_mapas/municipios.339.geojson", simplifyVector = F)
+get_data_from_map(mapa)
+
+highchart(type = "map") %>%
+  # hc_add_series(mapData = mapa_unis, fill = "transparent",
+  #               borderColor = "#bfefff") %>% 
+  hc_add_series(mapData = mapa, showInLegend = F, data = peso,
+                value = "value", joinBy = "CODIGO",
+                borderColor = "transparent") %>%
+  hc_colorAxis(stops = color_stops(colors = viridisLite::cividis(5, direction = 1))) %>%
+  hc_title(text = "Peso de los municipios por circunscripción",
+           align = "left",
+           style = list(useHTML = TRUE, fontSize = "18")) %>%
+  hc_subtitle(text = "Elección 2014",
+              align =  "left") %>% 
+  hc_legend(layout = "horizontal", align = "right",
+            floating = T) %>% 
+  hc_tooltip(enabled = T, valueDecimals = 0, borderWidth = 0.01,
+             pointFormat = paste("<br>Circunscripción: <b>{point.Circun}</b><br>
+                                  <br>Peso del municipio respecto a la circunscripción: <b>{point.value} %</b><br>
+                                  <br>Municipio: <b>{point.municipio}</b><br>"),
+             headerFormat = "") %>% 
+  hc_chart(backgroundColor="#FFFFFF", style=list(fontFamily = "Roboto",
+                                                 color = "#383733"), 
+           zoomType = "xy") %>%
+  htmlwidgets::saveWidget(here::here("uninominales", "img", "peso_municipios_circ.html"))
+
+######################################
+# distribuciones de voto del mas -ipsp
+######################################
+aa <- rio::import("uninominales/input/Computo Nacional Final 2014.xlsx") %>% 
+  select(-Circun) 
+
+bb <- rio::import("uninominales/input/Computo Nacional Final 2014.xlsx", which = 2) %>% 
+  select(NomDep, NomProv, NomReci, CodigoMesa, Circun) 
+
+aa %<>% left_join(., bb, by = c("NomDep", "NomProv", "NomReci", "CodigoMesa"))
+
+aa %<>% 
+  mutate(
+    validos = PDC +  `PVB-IEP` +  MSM + `MAS-IPSP` +  UD,
+    emitidos = validos + Blancos + Nulos,
+    voto = "presidente",
+    mas= `MAS-IPSP`/validos * 100
+  ) %>% 
+  select(NomDep, Circun, mas, voto)
+
+bb <- rio::import("uninominales/input/Computo Nacional Final 2014.xlsx", which = 2) %>% 
+  mutate(
+    validos = PDC +  `PVB-IEP` +  MSM + `MAS-IPSP` +  UD,
+    emitidos = validos + Blancos + Nulos,
+    voto = "uninominales",
+    mas = `MAS-IPSP`/validos * 100
+  ) %>% 
+  select(NomDep, Circun, mas, voto)
+
+temp <- bind_rows(aa, bb)
+
+# distribiucion unis-presidente
+temp %>% 
+  ggplot(aes(x = mas, fill = voto)) + 
+  geom_density(alpha = 0.5) + 
+  theme_ipsum_rc() + 
+  scale_x_continuous(
+    breaks = seq(0, 100, 10),
+    limits = c(0, 100)
+  ) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_blank()
+  ) + 
+  labs(
+    title = "Voto a presidente y diputados uninominales del MAS-IPSP",
+    subtitle = "26602 mesas. Elección 2014",
+    y = "", 
+    x = "%",
+    caption = "datosCC"
+  ) +
+  ggsave("uninominales/img/distribiucion_unis_pres.jpg", width = 10, height = 8)
+
+# distribiucion unis-presidente por departamento
+temp %>% 
+  filter(!is.na(NomDep)) %>% 
+  ggplot(aes(x = mas, fill = voto)) + 
+  geom_density(alpha = 0.5) + 
+  theme_ipsum_rc() + 
+  scale_x_continuous(
+    breaks = seq(0, 100, 10),
+    limits = c(0, 100)
+  ) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_blank()
+  ) + 
+  labs(
+    title = "Voto a presidente y diputados uninominales del MAS-IPSP",
+    subtitle = "26602 mesas. Elección 2014",
+    y = "", 
+    x = "%",
+    caption = "datosCC"
+  ) +
+  facet_wrap(~NomDep) + 
+  ggsave("uninominales/img/distribiucion_unis_pres_dpto.jpg", width = 20, height = 12)
+
+
+# distribiucion unis-presidente por Circunscripcion
+temp %>% 
+  filter(!is.na(Circun)) %>% 
+  ggplot(aes(x = mas, fill = voto)) + 
+  geom_density(alpha = 0.5) + 
+  theme_ipsum_rc() + 
+  scale_x_continuous(
+    breaks = seq(0, 100, 10),
+    limits = c(0, 100)
+  ) +
+  theme(
+    legend.position = "bottom",
+    legend.title = element_blank()
+  ) + 
+  labs(
+    title = "Voto a presidente y diputados uninominales del MAS-IPSP",
+    subtitle = "26602 mesas. Elección 2014",
+    y = "", 
+    x = "%",
+    caption = "datosCC"
+  ) +
+  facet_wrap(~Circun) + 
+  ggsave("uninominales/img/distribiucion_unis_pres_circun.jpg", width = 20, height = 12)
+
+# correlacion de voto y donde conviene ir
+aa <- rio::import("uninominales/input/Computo Nacional Final 2014.xlsx") %>% 
+  select(-Circun) 
+
+bb <- rio::import("uninominales/input/Computo Nacional Final 2014.xlsx", which = 2) %>% 
+  select(NomDep, NomProv, NomReci, CodigoMesa, Circun) 
+
+aa %<>% left_join(., bb, by = c("NomDep", "NomProv", "NomReci", "CodigoMesa"))
+
+aa %<>% 
+  mutate(
+    validos = PDC +  `PVB-IEP` +  MSM + `MAS-IPSP` +  UD,
+    emitidos = validos + Blancos + Nulos,
+    voto = "presidente",
+    mas = `MAS-IPSP`
+  ) %>% 
+  select(NomDep, Circun, mas, voto, validos)
+
+bb <- rio::import("uninominales/input/Computo Nacional Final 2014.xlsx", which = 2) %>% 
+  mutate(
+    validos = PDC +  `PVB-IEP` +  MSM + `MAS-IPSP` +  UD,
+    emitidos = validos + Blancos + Nulos,
+    voto = "uninominales",
+    mas = `MAS-IPSP`
+  ) %>% 
+  select(NomDep, Circun, mas, voto, validos)
+
+temp <- bind_rows(aa, bb)
+
+
+capitales <- c(1:2, 6:13, 20:22, 29:30, 44:51, 33, 40, 58, 62)
+depto <- rio::import("uninominales/input/Computo Nacional Final 2014.xlsx", which = 2) %>% 
+  select(NomDep, Circun) %>% 
+  unique() 
+
+temp %>% 
+  group_by(Circun, voto) %>% 
+  summarise(
+    mas = sum(mas),
+    validos = sum(validos),
+    mas_p = mas/validos * 100
+  ) %>% 
+  na.omit() %>% 
+  select(Circun, voto, mas_p) %>% 
+  spread(voto, mas_p) %>% 
+  mutate(
+    capital = case_when(
+      Circun %in% capitales ~ "capitales",
+      T ~ "no capitales"
+    )
+  ) %>% 
+  left_join(., inscritos) %>% 
+  left_join(., depto) %>% 
+  ungroup() %>% 
+  mutate(prop_emitidos = prop.table(emitidos) * 100) %>% 
+  hchart("scatter", hcaes(x = presidente, y = uninominales, group = capital)) %>% 
+  hc_title(text = "Correlación del voto a Presidente y diputados uninominales del del MAS-IPSP") %>% 
+  hc_subtitle(text = "En base a votos válidos") %>% 
+  hc_tooltip(enabled = T, valueDecimals = 2, borderWidth = 0.01,
+             pointFormat=paste("<br>Cirunscripción: <b>{point.Circun}</b><br>
+                                <br>Departamento: <b>{point.NomDep}</b><br>
+                                <br>Porcentaje voto presidente: <b>{point.presidente:.2f} % </b><br>
+                                <br>Porcentaje voto uninominales: <b>{point.uninominales:.2f} %"),
+             
+             headerFormat = "") %>% 
+  hc_chart(backgroundColor="#FFFFFF", style = list(fontFamily = "Roboto",
+                                                   color = "#383733")) %>% 
+  hc_add_theme(hc_theme_538()) %>% 
+  htmlwidgets::saveWidget(here::here("uninominales", "img", "scatter_mas_unis.html"))
+  
+# blancos unis y presidente
+aa <- rio::import("uninominales/input/Computo Nacional Final 2014.xlsx") %>% 
+  select(-Circun) 
+
+bb <- rio::import("uninominales/input/Computo Nacional Final 2014.xlsx", which = 2) %>% 
+  select(NomDep, NomProv, NomReci, CodigoMesa, Circun) 
+
+aa %<>% left_join(., bb, by = c("NomDep", "NomProv", "NomReci", "CodigoMesa"))
+
+aa %<>% 
+  mutate(
+    validos = PDC +  `PVB-IEP` +  MSM + `MAS-IPSP` +  UD,
+    emitidos = validos + Blancos + Nulos,
+    voto = "presidente",
+  ) %>% 
+  select(`MAS-IPSP`, emitidos, voto, Circun, Blancos)
+
+bb <- rio::import("uninominales/input/Computo Nacional Final 2014.xlsx", which = 2) %>% 
+  mutate(
+    validos = PDC +  `PVB-IEP` +  MSM + `MAS-IPSP` +  UD,
+    emitidos = validos + Blancos + Nulos,
+    voto = "uninominales"
+  ) %>% 
+  select(`MAS-IPSP`, emitidos, voto, Circun, Blancos)
+
+temp <- bind_rows(aa, bb)
+
+tmp <- temp %>% 
+  group_by(Circun, voto) %>% 
+  summarise(
+    mas = sum(`MAS-IPSP`),
+    emitidos = sum(emitidos),
+    blancos = sum(Blancos),
+    blancos = blancos/emitidos * 100,
+    mas_p = mas/emitidos * 100
+  ) %>% 
+  na.omit() %>% 
+  select(Circun, voto, mas_p) %>% 
+  spread(voto, mas_p) 
+
+temp %>% 
+  group_by(Circun, voto) %>% 
+  summarise(
+    mas = sum(`MAS-IPSP`),
+    emitidos = sum(emitidos),
+    blancos = sum(Blancos),
+    blancos = blancos/emitidos * 100,
+    mas_p = mas/emitidos * 100
+  ) %>% 
+  na.omit() %>% 
+  select(Circun, voto, blancos) %>% 
+  filter(voto == "uninominales") %>% 
+  right_join(., tmp) %>% 
+  arrange(desc(presidente)) -> tmp
+
+tmp %<>% mutate_if(is.numeric, round, 0)
+
+highchart() %>% 
+  hc_plotOptions(line = list(
+    lineWidth = 2,
+    marker = list(
+      lineWidth = 1/10,
+      lineColor = "#ffffff",
+      enabled = F
+    ))
+  ) %>% 
+  hc_xAxis(categories = tmp$Circun) %>% 
+  hc_add_series(name = "Voto a Presidente MAS-IPSP", data = tmp$presidente) %>% 
+  hc_add_series(name = "Voto a Uninominal MAS-IPSP", data = tmp$uninominales) %>%
+  hc_add_series(name = "Voto blanco uninominal", data = tmp$blancos) %>% 
+  hc_add_theme(hc_theme_538()) %>% 
+  hc_tooltip(crosshairs = TRUE, table = TRUE) %>% 
+  hc_title(text = "Comparación del voto a presidente, uninominales y voto blanco",
+           style = list(useHTML = TRUE, fontSize = "18")) %>%
+  hc_subtitle(text = "Elección 2014, en base a votos emitidos ") %>% 
+  htmlwidgets::saveWidget(here::here("uninominales", "img", "blancos_presidente_unis.html"))
+
+

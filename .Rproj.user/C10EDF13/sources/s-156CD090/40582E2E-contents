@@ -1,0 +1,108 @@
+library(tidyverse)
+
+df <- rio::import("/Users/rafalopezv/Desktop/escenario_2.xlsx", which = 3, skip = 1)
+
+colnames(df)[1] <- "partido"
+
+df %<>% select(partido, contains("_repesado")) %>% slice(1:8)
+
+df %<>% 
+  gather(sigla, votacion, -partido) %>% 
+  filter(!partido %in% "Juntos") %>% 
+  group_split(sigla) %>%
+  map(., ~bind_rows(., .) %>% 
+        bind_rows(., .) %>% 
+        mutate(num = rep(c(1, 2, 3, 4), 7) %>% sort)) %>% 
+  bind_rows() %>% 
+  mutate(
+    error = case_when(
+      str_detect(sigla,  "Beni") ~ 3.21,
+      str_detect(sigla,  "Chuqui_repesado") ~ 2.89,
+      str_detect(sigla,  "cocha_repesado") ~ 2.08,
+      str_detect(sigla,  "lpz_repesado") ~ 1.78,
+      str_detect(sigla,  "oruro_repesado") ~ 3.08,
+      str_detect(sigla,  "Pando_repesado") ~ 3.55,
+      str_detect(sigla,  "potosi_repesado") ~ 2.25,
+      str_detect(sigla,  "cruz_repesado") ~ 1.67,
+      str_detect(sigla,  "tarija_repesado") ~ 2.97,
+      str_detect(sigla,  "tarija_repesado") ~ 2.97
+    ),
+    max = votacion + error,
+    min = votacion - error,
+    min = case_when(
+      min < 0 ~ 0,
+      T ~ min
+    )
+  )
+
+
+
+# escenario 1
+temp1 <- df %>% 
+  group_split(sigla) %>% 
+  map(., ~mutate(., cociente = votacion/num) %>% arrange(desc(cociente)) %>% slice(1:4)) %>% 
+  bind_rows() %>%
+  group_by(sigla, partido) %>% 
+  count() %>% 
+  mutate(escenario = "escenario_1")
+  
+# escenario mas con máximos, resto con mínimos
+temp2 <- df %>% 
+  mutate(
+    votacion = case_when(
+      partido == "mas" ~ votacion + error, 
+      T ~ votacion
+    )
+  ) %>% 
+  group_split(sigla) %>% 
+  map(., ~mutate(., cociente = votacion/num) %>% arrange(desc(cociente)) %>% slice(1:4)) %>% 
+  bind_rows() %>% 
+  group_by(sigla, partido) %>% 
+  count() %>% 
+  mutate(escenario = "escenario_2")
+
+merge(temp1, temp2, all.x = T, all.y = T) %>% 
+  spread(escenario, n) -> temp
+  
+  
+# escenario mas con máximos, y  creemos y cc con mínimos
+temp3 <- df %>% 
+  mutate(
+    votacion = case_when(
+      partido == "mas" ~ votacion + error, 
+      T ~ votacion - error
+    )
+  ) %>% 
+  group_split(sigla) %>% 
+  map(., ~mutate(., cociente = votacion/num) %>% arrange(desc(cociente)) %>% slice(1:4)) %>% 
+  bind_rows() %>% 
+  group_by(sigla, partido) %>% 
+  count() %>% 
+  rename(escenario_3 = n)
+  
+
+merge(temp, temp3, all.x = T, all.y = T) -> temp
+
+temp %>% 
+  group_by(partido) %>% 
+  summarise(
+    escenario_1 = sum(escenario_1, na.rm = T),
+    escenario_2 = sum(escenario_2, na.rm = T),
+    escenario_3 = sum(escenario_3, na.rm = T)
+  ) %>% 
+  write_csv("/Users/rafalopezv/Desktop/ddd.csv")
+
+
+
+
+
+
+
+
+    
+  
+  
+  
+
+
+  

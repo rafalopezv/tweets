@@ -1,0 +1,25 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1602452979676.000,
+    "dirty" : true,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "1534206466",
+    "id" : "40582E2E",
+    "lastKnownWriteTime" : 1602446544,
+    "last_content_update" : 1602456433099,
+    "path" : "~/Desktop/codigo_encuestas.R",
+    "project_path" : null,
+    "properties" : {
+        "cursorPosition" : "93,0",
+        "scrollLine" : "72"
+    },
+    "read_only" : false,
+    "read_only_alternatives" : [
+    ],
+    "relative_order" : 8,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

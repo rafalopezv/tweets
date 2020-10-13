@@ -1,0 +1,819 @@
+# sobre: análisis de twitter 
+
+# authenticate via access token
+library(rtweet)
+library(lubridate)
+library(tidyverse)
+library(hrbrthemes)
+library(ggridges)
+library(viridisLite)
+library(magrittr)
+library(jcolors)
+
+
+token <- create_token(
+  app = "elecciones_bolivia_2019",
+  consumer_key = "GNmZjOP7FYY2iRcBue6zGVdJE ",
+  consumer_secret = "N4sJYQotWRiA0BYerKyl4cxfrCONQVkLxBkEYT2iXiaAOuL0uZ")
+
+# cuentas a seguir
+cuentas <- c("carlosdmesag", "GpedrazaM", "evoespueblo", "vhcardenasc", "ComunidadCBo", 
+"OscarOrtizA", "SDoriaMedina", "diarioeldeber", "LosTiemposBol", "pagina_siete", "LaRazon_Bolivia")
+
+# solo hacerlo semanalmente y hacer rbind con la base ya exportada. 
+tw <- get_timeline(user = cuentas, n = 3200) %>% 
+  mutate(inter = favorite_count + retweet_count, 
+         fecha_descarga = lubridate::now()) 
+
+# arreglo de hora (-4 horas)
+tw$created_at <-  tw$created_at - dhours(4)
+
+# exportar (por primera vez y depsues hacer rbind y eliminar duplicated)
+save(tw, file = "twitter/tw.RData")
+tw <- rio::import("twitter/tw.RData")
+
+# hora de twitteo (incluye rt de otras cuentas)
+tw %>% 
+  mutate(hora = lubridate::hour(created_at)) %>% 
+  ggplot(aes(hora, fill = screen_name)) +
+  geom_bar(stat = "count") +
+  theme_ipsum_rc() + 
+  scale_fill_viridis_d() + 
+  scale_x_continuous(breaks = seq(0,24,1)) + 
+  labs(
+    y = "frecuencia de tweets",
+    title = "30 % de los tweets se emiten entre las 7 y 11 de la mañana",
+    subtitle = "Se incluyen retweets (muestra de los 29 mil últimos tweets)",
+    fill = "cuenta"
+  ) + 
+  ggsave("img/twitter_hora.jpg", width = 10, height = 8, last_plot())
+
+# tweets por hora por cuenta
+tw %>% 
+  mutate(hora = lubridate::hour(created_at)) %>% 
+  ggplot(aes(hora, fill = screen_name)) +
+  geom_bar(stat = "count") +
+  theme_ipsum_rc() + 
+  scale_fill_viridis_d() + 
+  scale_x_continuous(breaks = seq(0,24,2)) + 
+  facet_wrap(vars(screen_name)) + 
+  theme(legend.position = "none") + 
+  labs(
+    title = "Evo twitea con mas frecuencia a las 6am. El Deber y los Tiempos tienen casi la misma distribución de tweets/hora\n que el Presidente",
+    subtitle = "29 mil últimos tweets",
+    y = "frecuencia de tweets"
+  ) + 
+  ggsave("img/twitter_hora_cuenta.jpg", width = 14, height = 8, last_plot())
+
+# densidad de los parecidos
+tw %>% 
+  mutate(hora = lubridate::hour(created_at)) %>% 
+  filter(screen_name %in% c("evoespueblo", "diarioeldeber", "LosTiemposBol")) %>% 
+  ggplot(aes(x=hora, fill=as.factor(screen_name))) +
+  geom_density(alpha = 0.3) +
+  theme_ipsum_rc() + 
+  scale_x_continuous(breaks = seq(0,24,1)) + 
+  scale_y_continuous(name = "%", labels=scales::percent) + 
+  scale_fill_viridis_d(option = "D") + 
+  labs(
+    title = "Evo, El Deber y Los Tiempos publican casi a las mismas horas",
+    subtitle = "Distribución porcentual de tweets por hora (10 mil últimos tweets)",
+    fill = "cuenta"
+  ) +
+  ggsave("img/twitter_hora_cuenta_parecidos.jpg", width = 10, height = 8, last_plot())
+
+# efectividad de la hora de twitteo general
+tw %>% 
+  mutate(hora = lubridate::hour(created_at),
+         año = year(created_at)) %>% 
+  filter(is_retweet == F) %>% 
+  filter(año > 2017) %>% 
+  group_by(hora) %>% 
+  summarise(n = sum(retweet_count)) %>% 
+  mutate(per = n/sum(n) * 100) %>% 
+  select(hora, per) %>% 
+  mutate_if(is.numeric, round, 1) %>% 
+  ggplot(aes(hora, per)) +
+  geom_col(alpha = 0.8) + 
+  theme_ipsum_rc() + 
+  theme(legend.position = "none") + 
+  scale_x_continuous(breaks = seq(0, 24, 1)) + 
+  scale_fill_viridis_d() + 
+  labs(
+    title = "Los tweets son más retuiteados en la mañana, entre 6 y 11 de la mañana",
+    subtite = "Años 2017 y 2018. 2585 tweets de todas las cuentas",
+    y = ""
+  )  + 
+  geom_text(aes(hora, per, label = scales::percent(per/100)), colour = "black", vjust = 1.5) + 
+  ggsave("img/twitter_horas_efectivas_twitteo_gneral.jpg", last_plot(), height = 15, width = 20) 
+
+# efectividad de la hora de twitteo específico
+tw %>% 
+  mutate(hora = lubridate::hour(created_at),
+         año = year(created_at)) %>% 
+  filter(is_retweet == F) %>% 
+  filter(año > 2017) %>% 
+  group_by(screen_name, hora) %>% 
+  summarise(n = sum(retweet_count)) %>% 
+  mutate(per = n/sum(n) * 100) %>% 
+  select(hora, screen_name, per) %>% 
+  ggplot(aes(hora, per, fill = screen_name)) +
+  geom_col() + 
+  facet_wrap(vars(screen_name), scales = "free_x") +
+  theme_ipsum_rc() + 
+  theme(legend.position = "none") + 
+  theme(axis.line=element_line()) + 
+  scale_x_continuous(breaks = seq(0, 24, 2)) + 
+  scale_fill_viridis_d() + 
+  labs(
+    title = "Los tweets son más retuiteados en la mañana, entre 6 y 11 de la mañana",
+    subtite = "Años 2017 y 2018",
+    y = "porcentaje"
+  ) + 
+  ggsave("img/twitter_horas_efectivas_twitteo_especifico.jpg", last_plot(), height = 15, width = 20) 
+
+# hora publicada vs hora favoriteada density plots
+# sacar la frecuencia para armar un df con la frecuncia real de rwtweets
+aa <- tw %>% 
+  mutate(
+    hora = hour(created_at),
+    año = year(created_at)
+  ) %>% 
+  filter(año > 2017) %>% 
+  filter(is_retweet == F) %>% 
+  select(hora, retweet_count, screen_name) %>% 
+  group_by(hora, screen_name) %>% 
+  summarise(rt = sum(retweet_count))
+
+# sacar los nOmbres en base a la frecuencia
+ch <- as.character()
+for(i in 1:nrow(aa)) {
+  temp <- rep(aa[i, "screen_name"], aa[i, "rt"]) %>% as.character() 
+  ch <- c(ch, temp)
+  cat(i, "\n")
+}
+
+# sacar los las horas en base a la frecuencia
+num <- as.numeric()
+for(i in 1:nrow(aa)) {
+  temp <- rep(aa[i, "hora"], aa[i, "rt"]) %>% as.numeric()
+  num <- c(num, temp)
+  cat(i, "\n")
+}
+
+# armar el data frame
+df <- data_frame(
+  screen_name = ch,
+  hora = num
+) %>% 
+  mutate(base = "retweets")
+
+# juntar data frame de frecuenai de retweets con frecuencia de tweets (posted)
+df1 <- tw %>% 
+  mutate(
+    hora = hour(created_at),
+    base = "emisión"
+  ) %>% 
+  select(screen_name, hora, base) %>% 
+  bind_rows(., df)
+
+#  stats de hora en el que sale el twet y hora en la que se retuitea
+df1 %>% 
+  group_by(base, screen_name, hora) %>%
+  summarise(n = n()) %>% 
+  mutate(per = n/sum(n) * 100)  %>% 
+  select(-n) %>% 
+  spread(base, per) %>% 
+  mutate(
+    retweets = coalesce(retweets, 0),
+    diferencia_en_favor_del_reweet = retweets - emisión,
+    fecha_descarga = as.Date("2019-02-07")
+  ) 
+  write_csv("twitter/stats/horas__tweet_horas_retweet.csv")
+
+#  stats de correlación retweets y hora de salida del tweet
+df1 %>% 
+    group_by(base, screen_name, hora) %>%
+    summarise(n = n()) %>% 
+    mutate(per = n/sum(n) * 100)  %>% 
+    select(-n) %>% 
+    spread(base, per) %>% 
+    mutate(
+      retweets = coalesce(retweets, 0)
+    ) %>% 
+    ungroup() %>% 
+    group_by(screen_name) %>% 
+    summarise(correlacion  = cor(retweets, emisión)) %>% 
+  mutate(fecha_decarga = as.Date("2019-02-07")) %>% 
+  write_csv("twitter/stats/correlacion_retweet_emision.csv") 
+  
+# graficas sorbe correlacion, densidades sobrepestas de horas de emision y retwwwt y correlacion rt y fav
+df1 %>% 
+  group_by(base, screen_name, hora) %>%
+  summarise(n = n()) %>% 
+  mutate(per = n/sum(n) * 100)  %>% 
+  select(-n) %>% 
+  spread(base, per) %>% 
+  mutate(
+    retweets = coalesce(retweets, 0)
+  ) %>% 
+  ungroup() %>% 
+  group_by(screen_name) %>% 
+  summarise(correlacion  = cor(retweets, emisión)) %>% 
+  arrange(correlacion) %>% 
+  mutate(no = 1:nrow(.)) %>% 
+  mutate_if(is.numeric, round, 2) %>% 
+  ggplot(aes(forcats::fct_reorder(screen_name, no, .desc = T), correlacion)) +
+  geom_col(alpha = 0.8) + 
+  theme_ipsum_rc() +
+  labs(
+    title = "Samuel Doria M. es el más preciso en tuitear a la hora correcta, Evo le sigue\nComunidad Ciudadana y Gustavo Pedraza tuitean cuando la gente no responde",
+    subtitle = "valor de la correlación: 1 perfecta relación entre hora del tweet y hora de los retweets; 0 nada de relación",
+    y = "correlación",
+    x = "",
+    caption = "muestra de 1 millón y medio de reweets y 20 mil tweets"
+  ) + 
+  geom_text(aes(screen_name, correlacion, label = correlacion), 
+            colour = "black", size = 5, vjust = 1.2) + 
+  ggsave("img/twitter_correlacion.jpg", last_plot(), width = 12, height = 8) 
+  
+
+# densidades sobre puestas general
+df1 %>% 
+  ggplot(aes(x = hora, fill = base)) +
+  geom_density(alpha = 0.3) + 
+  theme_ipsum_rc() + 
+  labs(
+    title = "En promedio, 4 de cada 10 tuits son lanzados a la hora correcta: cuando la gente retuitea",
+    caption = "muestra de 1 millón y medio de reweets y 20 mil tweets",
+    x = "hora",
+    y = "porcentaje",
+    fill = ""
+  ) + 
+  scale_x_continuous(breaks = seq(1,24,1)) + 
+  scale_y_continuous(labels = scales::percent) + 
+  theme(legend.position = "bottom") + 
+  ggsave("img/twitter_densidad_correlacion_general.jpg", last_plot(), width = 12, height = 8) 
+  
+# densidades sobre puestas específicas
+df1 %>% 
+  ggplot(aes(x = hora, fill = base)) +
+  geom_density(alpha = 0.3) + 
+  theme_ipsum_rc() + 
+  labs(
+    title = "Mientras las curvas se solapen más hay mas efectividad en los tweets\nMientras mas plana la curva menos precisión en la hora de emitir tweets",
+    caption = "muestra de 1 millón y medio de reweets y 20 mil tweets",
+    x = "hora",
+    y = "porcentaje",
+    fill = ""
+  ) + 
+  scale_x_continuous(breaks = seq(1,24,2)) + 
+  scale_y_continuous(labels = scales::percent) + 
+  theme(legend.position = "bottom") + 
+  facet_wrap(vars(screen_name), scales = "free_x") + 
+  ggsave("img/twitter_densidad_correlacion_específico.jpg", last_plot(), width = 12, height = 8) 
+  
+
+# ¿el contenido que publican es propio?
+tw %>% 
+  group_by(screen_name) %>% 
+  dplyr::count(is_retweet) %>% 
+  spread(is_retweet, n) %>% 
+  dplyr::rename(si = "FALSE", no = "TRUE") %>% 
+  mutate(
+    no = coalesce(no, 0L),
+    total = si + no,
+    si = si/total * 100
+  ) %>% 
+  mutate(no = no/total * 100) %>% 
+  gather(si, no, key = "contenido propio", value = "valor") %>% 
+  arrange(screen_name) %>% 
+  ggplot(aes(screen_name, valor, fill = `contenido propio`)) +
+  geom_bar(stat = "identity", position = "stack") + 
+  theme_ipsum_rc() +
+  labs(
+    title = "Evo no retuitea. En exceso lo hacen Ortiz y Cárdenas, Pedraza y Comunidad Ciudadana",
+    subtitle = "Tener no más 25% de retuits es aceptable (muestra de los últimos 29 mil tweets)",
+    y = "Porcentaje %",
+    x = "Candidato, medio o cuenta",
+    fill = "¿Contenido propio?"
+  ) +
+  theme(legend.position = "bottom") + 
+  ggsave("img/twitter_contenido_propio.jpg", width = 12, height = 8, last_plot())
+
+
+# distribucioon de los retweets
+tw %>% 
+  filter(is_retweet == F) %>% 
+  filter(retweet_count < 250) %>%
+  mutate(año = lubridate::year(created_at)) %>% 
+  filter(año > 2017) %>% 
+  ggplot(aes(x = retweet_count, y = screen_name, fill = screen_name)) + 
+  geom_density_ridges(alpha = 0.8) +
+  theme_ipsum_rc()  +
+  scale_fill_viridis_d() +
+  theme(legend.position = "none") +
+  labs(
+    title = "En promedio los tweets de Evo son retweeteados 129 veces\nLos de Mesa, 23 veces",
+    subtitle = "Retweets desde el año 2018",
+    x = "número de retweets",
+    y = "cuenta",
+    caption = "se limitaron los tweets cob más de 250 retweets (representan solo el 4%)"
+  ) + 
+  ggsave("img/twiiter_distribucion_retweets.jpg", last_plot(), width = 10, height = 10)
+
+# ¿tienen incidencia publicar videos y fotos?
+tw %<>% 
+  mutate(
+   links = map(urls_expanded_url, 1) %>% unlist, # extraer el primer elemento de los enlaces
+   fotos = map(media_expanded_url, 1) %>% unlist, # extraer el primer elemento de las fotos
+   etiquetas = map(hashtags, 1) %>% unlist, # extraer el primer elemento de los hashtags
+   medio = case_when(
+     
+   )
+  )
+
+
+tw %<>% 
+  mutate(medios = 
+           case_when(
+             tw$fotos %>% 
+               str_detect("photo") ~ "foto", 
+             tw$fotos %>% 
+               str_detect("video") ~ "video"
+           )) %>% 
+  mutate(
+    medios = coalesce(medios, "nada")
+  )
+
+# estadisticas
+tw %>% 
+  mutate(año = lubridate::year(created_at)) %>% 
+  filter(año > 2017) %>% 
+  filter(is_retweet == F) %>% 
+  group_by(screen_name, medios) %>% 
+  summarise(promedio = mean(retweet_count),
+            max = max(retweet_count),
+            min = min(retweet_count),
+            media = median(retweet_count)) %>% View
+
+# distribuciones de usos de medios y retweets, general 
+tw %>% 
+  mutate(año = lubridate::year(created_at)) %>% 
+  filter(año > 2017) %>% 
+  filter(is_retweet == F) %>% 
+  group_by(medios) %>% 
+  summarise(promedio = mean(retweet_count)) %>% 
+  mutate_if(is.numeric, round, 0) %>% 
+  ggplot(aes(medios, promedio, fill = medios)) +
+  geom_col(alpha = 0.8, color = NA) + 
+  theme_ipsum_rc() +
+  jcolors::scale_fill_jcolors(palette = "pal3")  +
+  theme(legend.position = "none") + 
+  labs(
+    x = "herramientas utilizadas en el tweet",
+    y = "promedio de retweets",
+    title = "Incluir un video en el tweet cuatriplica los retweets",
+    subtitle = "años 2018 y 2019",
+    caption = "solo se incluyen tweets originales de las cuentas"
+  ) + 
+  geom_text(aes(x = medios, y = promedio, label = promedio), 
+            color = "black", vjust = -0.5, size = 4.5) +
+  ggsave("img/twitter_medio_promedio_retweets_general.jpg", last_plot(), 
+         width = 10, height = 8)
+  
+# distribuciones de usos de medios y retweets, específico 
+tw %>% 
+  mutate(año = lubridate::year(created_at)) %>% 
+  filter(año > 2017) %>% 
+  filter(is_retweet == F) %>% 
+  group_by(screen_name, medios) %>% 
+  summarise(promedio = mean(retweet_count)) %>% 
+  mutate_if(is.numeric, round, 1) %>% 
+  ggplot(aes(medios, promedio, fill = medios)) +
+  geom_col(alpha = 0.8, color = NA) + 
+  theme_ipsum_rc() +
+  jcolors::scale_fill_jcolors(palette = "pal3")  +
+  theme(legend.position = "none") + 
+  labs(
+    x = "herramientas utilizadas en el tweet",
+    y = "promedio de retweets",
+    title = "10 de 11 cuentas generan más retweets al incluir videos",
+    subtitle = "años 2018 y 2019",
+    caption = "solo se incluyen tweets originales de las cuentas"
+  ) + 
+  geom_text(aes(x = medios, y = promedio, label = promedio), 
+            color = "black", size = 4.5) +
+  facet_wrap(vars(screen_name)) + 
+  ggsave("img/twitter_medio_promedio_retweets_especifico.jpg", last_plot(), 
+         width = 10, height = 8)
+
+  
+# mediso utilizados general
+tw %>% 
+  mutate(año = lubridate::year(created_at)) %>% 
+  filter(año > 2017) %>% 
+  filter(is_retweet == F) %>% 
+  group_by(medios) %>% 
+  count() %>% 
+  ungroup() %>% 
+  mutate(pro = n/sum(n)) %>% 
+  ggplot(aes(medios, n, fill = medios)) +
+  geom_col(alpha = 0.8, color = NA) + 
+  theme_ipsum_rc() +
+  jcolors::scale_fill_jcolors(palette = "pal3")  +
+  theme(legend.position = "none") + 
+  labs(
+    x = "herramientas utilizadas en el tweet",
+    y = "número de tweets",
+    title = "El video es subutilizado y 55% de los tweets tienen al menos una foto",
+    subtitle = "24274  últimos tweets. Años 2018 y 2019",
+    caption = "solo se incluyen tweets originales de las cuentas"
+  ) + 
+  geom_text(aes(x = medios, y = n, label = n), 
+            color = "black", size = 4.5, vjust = -0.5) +
+  ggsave("img/twitter_medios_mas_usados_general.jpg", height = 8, width = 10, last_plot())
+
+# medios utilizados específico
+tw %>% 
+  mutate(año = lubridate::year(created_at)) %>% 
+  filter(año > 2017) %>% 
+  filter(is_retweet == F) %>% 
+  group_by(medios, screen_name) %>% 
+  summarise(n = n()) %>% 
+  ungroup() %>%
+  ggplot(aes(medios, n, fill = medios)) +
+  geom_col(alpha = 0.8, color = NA) + 
+  theme_ipsum_rc() +
+  jcolors::scale_fill_jcolors(palette = "pal3")  +
+  theme(legend.position = "none") + 
+  labs(
+    x = "herramientas utilizadas en el tweet",
+    y = "número de tweets",
+    title = "El video es subutilizado y 55% de los tweets tienen al menos una foto",
+    subtitle = "24274  últimos tweets. Años 2018 y 2019",
+    caption = "solo se incluyen tweets originales de las cuentas"
+  ) + 
+  geom_text(aes(x = medios, y = n, label = n), 
+            color = "black", size = 4.5) +
+  facet_wrap(vars(screen_name)) + 
+  ggsave("img/twitter_medios_mas_usados_específico.jpg", height = 10, width = 12, last_plot())
+
+
+## pueba de hstorama de medio video
+  
+  tw %>% 
+    mutate(año = lubridate::year(created_at)) %>% 
+    filter(año > 2017) %>% 
+    filter(is_retweet == F) %>% 
+    filter(retweet_count > 0) %>% 
+    filter(medios == "nada") %>% 
+    ggplot(aes(x = retweet_count)) + 
+    geom_histogram(alpha = 0.8, binwidth = 1000) +
+    theme_ipsum_rc()
+
+# relación like y retuits de todos
+tw %>% 
+  filter(is_retweet == F) %>% 
+  ggplot(aes(x = retweet_count, y = favorite_count)) +
+  geom_point(aes(colour = screen_name), alpha = 0.5) + 
+  scale_fill_viridis_d() + 
+  theme_ipsum_rc() + 
+  scale_x_continuous(limits = c(0, 500)) + 
+  scale_y_continuous(limits = c(0, 500))
+
+tw %>%
+  group_by(screen_name) %>% 
+  count(is_retweet)
+
+
+
+
+# relación like y para ver  
+tw$is_retweet %>% unique
+
+# a que hora se likea mas
+tw %>% 
+  filter(screen_name %in% c("vhcardenasc", "OscarOrtizA", "SDoriaMedina")) %>% 
+  ggplot(aes(retweet_count, favorite_count)) +
+  geom_point() + 
+  facet_wrap(vars(screen_name))
+
+cuentas <- c("carlosdmesag", "GpedrazaM", "evoespueblo", "vhcardenasc", "ComunidadCBo", 
+             "OscarOrtizA", "SDoriaMedina", "diarioeldeber", "LosTiemposBol", "pagina_siete", "LaRazon_Bolivia")
+
+tw %>% 
+  filter(screen_name %in% c("vhcardenasc", "OscarOrtizA", "SDoriaMedina")) %>% 
+  select(screen_name, favorite_count, retweet_count) %>% View()
+
+tw %>% 
+  filter(screen_name %in% "vhcardenasc") %>% View
+  select(screen_name, favorite_count, retweet_count) %>% View()
+
+
+
+# <- <- <- <- <- <- <- <- <- <- <- <- <- <- <- <- <- <- <- <- <- <- <- <- <- <- <- 
+evo1 <- evo %>% select(created_at, inter)
+evo1 <-  evo1[!evo1 %>% duplicated(), ]
+temp <- evo1$created_at %>% duplicated() %>% which
+evo1[temp, "created_at"] <- evo1[temp, "created_at"] + dseconds(1)
+temp <- evo1$created_at %>% duplicated() %>% which()
+evo1[temp, "created_at"] <- evo1[temp, "created_at"] + dseconds(1)
+temp <- evo1$created_at %>% duplicated() %>% which()
+evo1[temp, "created_at"] <- evo1[temp, "created_at"] + dseconds(1)
+temp <- evo1$created_at %>% duplicated() %>% which()
+evo1[temp, "created_at"] <- evo1[temp, "created_at"] + dseconds(1)
+temp <- evo1$created_at %>% duplicated() %>% which()
+evo1[temp, "created_at"] <- evo1[temp, "created_at"] + dseconds(1)
+temp <- evo1$created_at %>% duplicated() %>% which()
+evo1[temp, "created_at"] <- evo1[temp, "created_at"] + dseconds(1)
+temp <- evo1$created_at %>% duplicated() %>% which()
+evo1[temp, "created_at"] <- evo1[temp, "created_at"] + dseconds(1)
+temp <- evo1$created_at %>% duplicated() %>% which()
+evo1[temp, "created_at"] <- evo1[temp, "created_at"] + dseconds(1)
+temp <- evo1$created_at %>% duplicated() %>% which()
+evo1[temp, "created_at"] <- evo1[temp, "created_at"] + dseconds(1)
+temp <- evo1$created_at %>% duplicated() %>% which()
+evo1[temp, "created_at"] <- evo1[temp, "created_at"] + dseconds(1)
+temp <- evo1$created_at %>% duplicated() %>% which()
+evo1[temp, "created_at"] <- evo1[temp, "created_at"] + dseconds(1)
+temp <- evo1$created_at %>% duplicated() %>% which()
+evo1[temp, "created_at"] <- evo1[temp, "created_at"] + dseconds(1)
+temp <- evo1$created_at %>% duplicated() %>% which()
+evo1[temp, "created_at"] <- evo1[temp, "created_at"] + dseconds(1)
+
+rownames(evo1) <- evo1$created_at
+evo1 %<>% select(-created_at) 
+evo1 %<>% as.xts()
+
+
+
+mesa <- get_timeline(user = "carlosdmesag", n = 3200) %>% 
+  mutate(inter = favorite_count + retweet_count)
+mesa %<>% arrange(created_at) 
+mesa$created_at <-  mesa$created_at - dhours(4)
+mesa1 <- mesa %>% select(created_at, inter) %>% 
+  filter(created_at > "2018-05-14")
+
+mesa1 <-  mesa1[!mesa1 %>% duplicated(), ]
+temp <- mesa1$created_at %>% duplicated() %>% which()
+row.names(mesa1) <- mesa1$created_at
+mesa1 %<>% select(-created_at)
+mesa1 %<>% as.xts()
+
+tweets1 <- highchart(type = "stock" ) %>% 
+  hc_title(text = "Respuesta en redes de los 6 últimos meses de tweets de Carlos Mesa y Evo Morales") %>% 
+  hc_subtitle(text = "Personas que retwitearon y gustaron del tweet") %>% 
+  hc_add_series(evo1, name = "evo: tweets retwiteados y gustados") %>% 
+  hc_add_series(mesa1, name = "mesa: tweets retwiteados y gustados") %>% 
+  hc_add_theme(hc_theme_538())
+htmltools::save_html(tweets1, "/Users/rafalopezv/Downloads/alfa1/img/twets1.html")
+
+# 3200 ultimos tweets de mesa
+mesa1 <- mesa %<>% select(created_at, inter)
+mesa1 <-  mesa1[!mesa1 %>% duplicated(), ]
+temp <- mesa1$created_at %>% duplicated() %>% which()
+mesa1[temp, "created_at"] <- mesa1[temp, "created_at"] + dseconds(1)
+row.names(mesa1) <- mesa1$created_at
+mesa1 %<>% select(-created_at)
+mesa1 %<>% as.xts()
+
+tweets2 <- highchart(type = "stock" ) %>% 
+  hc_title(text = "Evolución de los últimos 3200 tweets de Carlos Mesa") %>% 
+  hc_subtitle(text = "Personas que retwitearon y gustaron del tweet") %>% 
+  hc_add_series(mesa1, name = "mesa: tweets retwiteados y gustados") %>% 
+  hc_add_theme(hc_theme_538()) %>% 
+  hc_chart(zoomType = "xy")
+htmltools::save_html(tweets2, "/Users/rafalopezv/Downloads/alfa1/img/twets2.html")
+
+
+# wordcloud de mesa
+rt <- search_tweets(
+  "damian condori", n = 100000, include_rts = FALSE
+)
+
+#------------------------------------
+# problemas de Patapampa
+#------------------------------------
+
+rt <- search_tweets(
+  "patapampa", n = 18000, include_rts = FALSE
+)
+
+rt_1 <- search_tweets(
+  "#rellenosanitario", n = 18000, include_rts = FALSE
+)
+
+rt_2 <- search_tweets(
+  "#revilla", n = 18000, include_rts = FALSE
+)
+
+rt_3 <- search_tweets(
+  "#RellenoSanitario", n = 18000, include_rts = FALSE
+)
+
+rt_4 <- search_tweets(
+  "#Patapampa", n = 18000, include_rts = FALSE
+)
+
+
+# carlos mesa, gustavo aliaga
+mesa <- 
+
+
+
+
+
+
+
+a <- bind_rows(rt, rt_1, rt_2, rt_3, rt_4) %>% 
+  unique 
+
+
+rt_5 <- search_tweets(
+  "#Tariquia", n = 18000, include_rts = FALSE
+)
+  
+ 
+rt_6 <- search_tweets(
+  "#Tariquía", n = 18000, include_rts = FALSE
+) 
+
+bind_rows(rt_5, rt_6) %>% 
+  unique %>% 
+  nrow()
+
+
+library(tidytext)
+
+a %>%
+  unnest_tokens(word, text) %>% 
+  group_by(word) %>% 
+  count() %>% 
+  arrange(desc(n)) %>% 
+  filter(!word %in% c("de", "la", "https", "t.co", "el", "en", "y", "a",
+                      "del", "que", "se", "un", "por", "con", "los", "al", 
+                      "es", "más", "gt", "las", "una", "está", "estará",
+                      "sobre", "vía", "hay", "lo", "esta", "deúltimo", "le", 
+                      "último", "como", "este", "donde", "para", "no")) %>% 
+  ungroup() %>% 
+  mutate(num = 1:nrow(.)) %>% 
+  filter(num < 25) %>%
+  mutate(word = reorder(word, n)) %>%
+  ggplot(aes(word, n)) +
+  geom_col() +
+  xlab(NULL) +
+  coord_flip() + 
+  labs(
+    title = "Palabras con mayor frecuencia en los tweets referidos a Patapampa",
+    subtitle = "Actualizado a las 12:15 del 27 de marzo de 2019",
+    y = "frecuencia"
+  ) +
+  theme_ft_rc()
+
+install.packages("wordcloud")
+library(wordcloud) 
+
+a %>%
+  unnest_tokens(word, text) %>% 
+  group_by(word) %>% 
+  count() %>% 
+  arrange(desc(n)) %>% 
+  filter(!word %in% c("de", "la", "https", "t.co", "el", "en", "y", "a",
+                      "del", "que", "se", "un", "por", "con", "los", "al", 
+                      "es", "más", "gt", "las", "una", "está", "estará",
+                      "sobre", "vía", "hay", "lo", "esta", "deúltimo", "le", 
+                      "último", "como", "este", "donde", "para", "no")) %>% 
+  ungroup() %>% 
+  mutate(num = 1:nrow(.)) %>% 
+  count(word) %>%
+  with(wordcloud(word, n, max.words = 100))
+  
+  
+  
+### sobre las declaraciones de mesa sobre el mar
+
+cuentas <- c("carlosdmesag", "TataQuispe", "evoespueblo", "vhcardenasc", "ComunidadCBo", 
+             "OscarOrtizA", "SDoriaMedina", "diarioeldeber", "LosTiemposBol", "pagina_siete", "LaRazon_Bolivia")
+
+# solo hacerlo semanalmente y hacer rbind con la base ya exportada. 
+mesa <- search_tweets(
+  "@carlosdmesag", n = 18000, include_rts = FALSE
+)
+
+mesa %<>% 
+  filter(created_at >= "2019-03-27") %>% 
+  arrange(desc(retweet_count)) %>% 
+  mutate(nombre = "mesa")
+
+quispe <- search_tweets(
+  "@TataQuispe", n = 18000, include_rts = FALSE
+) %>% 
+  filter(created_at >= "2019-03-27") %>% 
+  arrange(desc(retweet_count)) %>% 
+  mutate(nombre = "quispe")
+
+santa <- search_tweets(
+  "@WSantamar", n = 18000, include_rts = FALSE
+) %>% 
+  filter(created_at >= "2019-03-27") %>% 
+  arrange(desc(retweet_count)) %>% 
+  mutate(nombre = "santa")
+
+aa <- rio::import("twitter/mar.RData")
+library(tidyverse)
+library(magrittr)
+library(tidytext)
+Sys.setlocale(locale = "es_ES.UTF-8")
+
+
+aa %>% 
+  filter(nombre == "mesa") %>% 
+  group_by(screen_name) %>% 
+  count() %>% 
+  arrange(desc(n)) %>% 
+  View
+
+
+
+
+
+
+aa %>% 
+  unnest_tokens(word, text) 
+  group_by(word) %>% 
+  count() %>% 
+  arrange(desc(n)) %>% 
+  filter(!word %in% c("de", "la", "https", "t.co", "el", "en", "y", "a",
+                      "del", "que", "se", "un", "por", "con", "los", "al", 
+                      "es", "más", "gt", "las", "una", "está", "estará",
+                      "sobre", "vía", "hay", "lo", "esta", "deúltimo", "le", 
+                      "último", "como", "este", "donde", "para", "no", "su", "mesa","rafaelquispef",
+                      "si", "mas", "pero", "son", "ni", "o", "solo", "sus", "te",
+                      "q", "ya", "eso", "quispe", "tiene", "ser", "usted", "les", "tu", 
+                      "me", "quien", "sin")) %>% 
+  ungroup() %>% 
+  slice(-c(1:10)) %>% 
+  mutate(num = 1:nrow(.)) %>% 
+  slice(1:20) %>% 
+  ggplot(aes(fct_reorder(word, num, .desc = T), n)) +
+  geom_col() + 
+  coord_flip() +
+  theme_ipsum_rc() +
+  labs(
+    title = "20 palabras con más frecuencia en los tweets referidos al prsupuesto de la veocería de la causa marítima",
+    subtitle = "Rango de tiempo: 27 y 28 de marzo",
+    caption = "menciones específicas a Carlos Mesa, Rafael Quispe y Wilson Santamaría",
+    y = "frecuencia",
+    x = ""
+  )
+  
+
+  
+
+  aa %>% 
+    unnest_tokens(word, text) %>% 
+  group_by(word, nombre) %>% 
+    count() %>% 
+    arrange(desc(n)) %>% 
+    filter(!word %in% c("de", "la", "https", "t.co", "el", "en", "y", "a",
+                        "del", "que", "se", "un", "por", "con", "los", "al", 
+                        "es", "más", "gt", "las", "una", "está", "estará",
+                        "sobre", "vía", "hay", "lo", "esta", "deúltimo", "le", 
+                        "último", "como", "este", "donde", "para", "no", "su", "mesa","rafaelquispef",
+                        "si", "mas", "pero", "son", "ni", "o", "solo", "sus", "te",
+                        "q", "ya", "eso", "quispe", "tiene", "ser", "usted", "les", "tu", 
+                        "me", "quien", "sin")) %>% 
+    ungroup() %>% 
+    slice(-c(1:10)) %>% 
+    mutate(num = 1:nrow(.)) %>% 
+    slice(1:20) %>% 
+    ggplot(aes(fct_reorder(word, num, .desc = T), n)) +
+    geom_col() + 
+    coord_flip() +
+    theme_ipsum_rc() +
+    labs(
+      title = "20 palabras con más frecuencia en los tweets referidos al prsupuesto de la veocería de la causa marítima",
+      subtitle = "Rango de tiempo: 27 y 28 de marzo",
+      caption = "menciones específicas a Carlos Mesa, Rafael Quispe y Wilson Santamaría",
+      y = "frecuencia",
+      x = ""
+    ) + 
+    facet_wrap(vars(nombre))
+
+  
+  aa %>% 
+    arrange(desc(retweet_count)) %>% 
+    select(quien_tuitea = screen_name, texto = text, fecha_emisión_tweet = created_at,
+           contedo_retweets = retweet_count, conteo_favoritos = favorite_count) %>% 
+    rio::export("/Users/rafalopezv/Desktop/twitter.xlsx")
+
+  
+devtools::install_github("JohnCoene/twinetverse")
+library(twinetverse)
+    
+    
+  
+  
+  
+  

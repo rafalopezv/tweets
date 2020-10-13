@@ -11,15 +11,20 @@ library(highcharter)
 library(graphTweets)
 library(sigmajs)
 
+# token <- create_token(
+#   app = "elecciones_bolivia_2019",
+#   consumer_key = "GNmZjOP7FYY2iRcBue6zGVdJE ",
+#   consumer_secret = "N4sJYQotWRiA0BYerKyl4cxfrCONQVkLxBkEYT2iXiaAOuL0uZ")
 
 
 #tw <- search_tweets("#VamosASalirAdelante", n = 18000)
 
-# correccion de zona horaria
-#tw$created_at <-  tw$created_at - dhours(4)
-
 
 tw <- rio::import("tw.Rdata")
+
+#correccion de zona horaria
+#tw$created_at <-  tw$created_at - dhours(4)
+
 
 # ¿son contenidos propios
 lang <- getOption("highcharter.lang")
@@ -97,7 +102,44 @@ sigmajs() %>%
   
 
 
+temp <- tw %>% 
+  mutate(
+    fecha = as.Date(created_at)
+  ) %>% 
+  group_by(fecha) %>% 
+  summarise(
+    rt = sum(is_retweet),
+    n = n(),
+    prop_rt = rt/n*100, 
+    prop_propio = 100 - prop_rt
+  ) %>% 
+  mutate(twt = n- rt) %>% 
+  mutate_if(is.numeric, round, 2) %>% 
+  select(fecha, total = n, twt, rt)
 
+a_1 <- as.data.frame(temp)
+
+categories_column <- "fecha"
+measure_columns <- c(colnames(a_1[3:length(a_1)]))
+
+hbr_sn <- highchart() %>%
+  hc_xAxis(categories = a_1[, categories_column],
+           title = categories_column)
+
+invisible(lapply(measure_columns, function(column) {
+  hbr_sn <<-
+    hc_add_series(hc = hbr_sn, name = column,
+                  data = a_1[, column])
+}))
+
+bar_tw <- hbr_sn %>%
+  hc_chart(type = "column") %>%
+  hc_plotOptions(series = list(stacking = "normal")) %>%
+  hc_legend(reversed = TRUE) %>% 
+  hc_add_theme(hc_theme_smpl())  %>%
+  hc_yAxis(title = list(text = "Total tweets y retweets por día")) %>% 
+  hc_tooltip(shared = T) %>% 
+  hc_chart(style = list(fontFamily = "Source Code Pro"))
 
   
 

@@ -1,5 +1,5 @@
 ---
-title: "Social Lisntenig de #VamosASalirAdelante"
+title: "Social Listening de #VamosASalirAdelante"
 output: 
   html_document: 
     css: style.css
@@ -12,8 +12,11 @@ source("code.R")
 Sys.setlocale(locale = "es_ES.UTF-8")
 ```
 
+
+
 <h1>¿Los casi 18 mil tweets son creaciones propias o solo difusión?</h1>
 ```{r, include=T, echo = F}
+bar_tw
 g1
 ```
 <br>

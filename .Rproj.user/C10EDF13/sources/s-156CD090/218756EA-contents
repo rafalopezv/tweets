@@ -1,0 +1,193 @@
+# sobre voto cruzado
+
+#--------------------
+# limpieza
+#--------------------
+
+df <- rio::import("/Users/rafalopezv/Documents/data/computo_compilacion/acta.2019.10.25.21.09.30.xlsx") %>% janitor::clean_names()  
+
+df %<>% 
+  filter(eleccion %in% c("Presidente y Vicepresidente", "Diputados Uninominales")) %>% 
+  filter(pais == "Bolivia") %>% 
+  group_split(eleccion)
+
+df[[1]]$codigo_mesa %>% unique -> codigo
+
+df[[2]] %<>% filter(codigo_mesa %in% codigo)
+
+df <- bind_rows(df)
+
+
+
+
+df %>% colnames
+  select(c(3,6,  11:23)) %>% colnames
+  select(-inscritos) %>% 
+  mutate(votos_validos = cc + fpv + mts + ucs + mas_ipsp + x21f + pdc + mnr + pan_bol) %>% 
+  rename(bdn = x21f)  -> df_horizontal_voto
+
+
+df_horizontal_voto %>% 
+  gather(partido, votos, -codigo_mesa, -eleccion, -votos_validos, -departamento, -municipio) -> df_vertical_voto
+
+
+df_horizontal_voto %>%
+  mutate(
+    cc = round(cc/votos_validos*100, 2),
+    fpv = round(fpv/votos_validos*100, 2),
+    mts = round(mts/votos_validos*100, 2),
+    ucs = round(ucs/votos_validos*100, 2),
+    mas_ipsp = round(mas_ipsp/votos_validos*100, 2),
+    bdn = round(bdn/votos_validos*100, 2),
+    pdc = round(pdc/votos_validos*100, 2),
+    mnr = round(mnr/votos_validos*100, 2),
+    pan_bol = round(pan_bol/votos_validos*100, 2)
+  ) -> df_horizontal_porcentaje
+
+
+df_horizontal_porcentaje %>% 
+  gather(partido, votos, -codigo_mesa, -eleccion, -votos_validos, -departamento, -municipio) -> df_vertical_porcentaje
+  
+#--------------------
+# análisis
+#--------------------
+
+# 1: mas votos a presi cc y mas a bdn unis
+df_horizontal_voto %>% 
+  select(departamento, municipio, codigo_mesa, eleccion, cc) %>% 
+  spread(eleccion, cc) %>% 
+  janitor::clean_names() %>% 
+  rename(
+    presidente_y_vicepresidente_cc = presidente_y_vicepresidente,
+    diputados_uninominales_cc = diputados_uninominales
+  ) -> temp
+
+
+df_horizontal_voto %>% 
+  select(departamento, municipio, codigo_mesa, eleccion, bdn) %>% 
+  spread(eleccion, bdn) %>% 
+  janitor::clean_names() %>% 
+  rename(
+    presidente_y_vicepresidente_bdn = presidente_y_vicepresidente,
+    diputados_uninominales_bdn = diputados_uninominales
+  ) -> temp1
+  
+
+temp %>% merge(., temp1) -> temp
+
+temp %>% 
+  mutate(
+    cruzado = (presidente_y_vicepresidente_cc > presidente_y_vicepresidente_bdn) & (diputados_uninominales_bdn > diputados_uninominales_cc) 
+  ) %>% 
+  group_by(departamento) %>% 
+  count(cruzado) %>% 
+  spread(cruzado, n) %>% 
+  mutate(
+    voto_cruzdo = `TRUE` / (`TRUE` + `FALSE`) * 100,
+    voto_sin_cuzar = 100 - voto_cruzdo
+  ) %>% 
+  select(-`TRUE`, -`FALSE`) %>% 
+  mutate_if(is.numeric, round, 0) %>% 
+  view
+
+
+df_vertical_porcentaje %>% 
+  filter(partido == "cc") %>% 
+  mutate(llave = paste0(eleccion, partido)) %>% 
+  filter(llave %in% c("Presidente y Vicepresidentecc", "Diputados Uninominalescc")) %>% 
+  select(departamento, codigo_mesa, eleccion, votos) %>% 
+  spread(eleccion, votos) %>% 
+  janitor::clean_names() %>% 
+  ggplot(aes(diputados_uninominales, presidente_y_vicepresidente)) +
+  geom_point(alpha = 0.4, size = 1, color = "black") + 
+  hrbrthemes::theme_ipsum(base_family = "Source Code Pro") + 
+  facet_wrap(~departamento, scales = "free") +
+  labs(
+    title = "¿Voto cruzado?: 32769 mesas, elección 2019",
+    x = "Porcentaje de voto a Presidente MAS-IPSP",
+    y = "Porcentaje de voto a uninominal MAS-IPSP",
+    caption = "cada circulo representa una mesa"
+  ) +
+  geom_smooth(method = "lm")
+    	
+
+temp %>% 
+  filter(key == "cc") %>% 
+  filter(key == "cc") %>% 
+  mutate(llave = paste0(eleccion, key)) %>% 
+  filter(llave %in% c("Presidente y Vicepresidentecc", "Diputados Uninominalescc")) %>% 
+  select(departamento, codigo_mesa, eleccion, prop) %>% 
+  spread(eleccion, prop) %>% 
+  janitor::clean_names() -> bdn
+
+
+lm(bdn$presidente_y_vicepresidente ~ 0 + bdn$diputados_uninominales) %>% summary() 
+cor.test(bdn$presidente_y_vicepresidente, bdn$diputados_uninominales) 
+
+
+df %>% 
+  select(c(3, 11:23)) %>% 
+  select(-inscritos) %>% 
+  gather(key, value, -codigo_mesa, -eleccion, -votos_validos, -departamento) %>% 
+  mutate(
+    prop = value/votos_validos*100,
+    prop = round(prop, 1)
+  ) %>% 
+  filter(key == "cc") %>% 
+  mutate(llave = paste0(eleccion, key)) %>% 
+  filter(llave %in% c("Presidente y Vicepresidentecc", "Diputados Uninominalescc")) %>% 
+  select(departamento, codigo_mesa, eleccion, prop) %>% 
+  spread(eleccion, prop) %>% 
+  janitor::clean_names() %>% 
+  ggplot(aes(presidente_y_vicepresidente, diputados_uninominales)) +
+  geom_point(alpha = 0.4, size = 1) + 
+  geom_smooth(method = "lm") +
+  hrbrthemes::theme_ipsum() + 
+  facet_wrap(~departamento, scales = "free") +
+  labs(
+    title = "¿Voto cruzado?: 32769 mesas, elección 2019",
+    x = "Porcentaje de voto a Presidente CC",
+    y = "Porcentaje de voto a uninominal Bolivia dijo NO"
+  )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -2,23 +2,23 @@
     "collab_server" : "",
     "contents" : "",
     "created" : 1602446695207.000,
-    "dirty" : true,
+    "dirty" : false,
     "encoding" : "UTF-8",
     "folds" : "",
-    "hash" : "0",
+    "hash" : "208366107",
     "id" : "49972C4B",
-    "lastKnownWriteTime" : 1602449200,
-    "last_content_update" : 1602449287965,
+    "lastKnownWriteTime" : 1602612860,
+    "last_content_update" : 1602612860846,
     "path" : "~/Documents/R/tweets/code.R",
     "project_path" : "code.R",
     "properties" : {
-        "cursorPosition" : "15,7",
-        "scrollLine" : "5"
+        "cursorPosition" : "24,0",
+        "scrollLine" : "22"
     },
     "read_only" : false,
     "read_only_alternatives" : [
     ],
-    "relative_order" : 2,
+    "relative_order" : 7,
     "source_on_save" : false,
     "source_window" : "",
     "type" : "r_source"
