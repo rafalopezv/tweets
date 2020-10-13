@@ -3,6 +3,8 @@
 #--------------------
 # limpieza
 #--------------------
+library(tidyverse)
+library(magrittr)
 
 df <- rio::import("/Users/rafalopezv/Documents/data/computo_compilacion/acta.2019.10.25.21.09.30.xlsx") %>% janitor::clean_names()  
 

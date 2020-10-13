@@ -17,7 +17,7 @@ library(sigmajs)
 #   consumer_secret = "N4sJYQotWRiA0BYerKyl4cxfrCONQVkLxBkEYT2iXiaAOuL0uZ")
 
 
-#tw <- search_tweets("#VamosASalirAdelante", n = 18000)
+# tw <- search_tweets("#VamosASalirAdelante", n = 18000)
 
 
 tw <- rio::import("tw.Rdata")
